@@ -17,6 +17,7 @@ public class AllImagesProcessor {
 
     AllImagesProcessor(File file, ImageHandler algorithm) {
         traverser = new Traverser(file);
+        this.algorithm = algorithm;
     }
 
     public void apply(File path) {
