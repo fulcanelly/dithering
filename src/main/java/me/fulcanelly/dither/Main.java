@@ -15,7 +15,7 @@ public class Main {
 
     public static void main(String[] args) throws IOException {
         ImageHandler ih = null;
-        if (args.length >= 0 ) {
+        if (args.length > 0) {
             ih = new BayerDitheringFacade();
         } else {
             ih = new ErrorDiffusionFacade();
