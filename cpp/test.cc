@@ -8,13 +8,17 @@
 #include <cmath>
 
 #include <optional>
+#include <thread>
+#include <queue>
+#include <mutex>
+
 
 using std::vector;
 using std::cout, std::endl;
 using std::optional;
+using std::lock_guard, std::mutex;
 
 namespace fs = boost::filesystem;
-
 
 const vector<int> mask = {
     0,  8,  2, 10,
@@ -65,26 +69,72 @@ bool check_directory(std::string dir) {
     return false;
 }
 
+template<class T>
+struct sync_lifo_queue {
+    
+    vector<T> queue;
+    mutex queue_mutex;
+    int size = 0;
+
+    T pop() {
+        lock_guard<mutex> guard(queue_mutex);
+        //auto res = queue.back();
+        //queue.resize(queue.size() - 1);
+        return queue[--size];
+    }
+
+    void push(const T& value) {
+        size++;
+        lock_guard<mutex> guard(queue_mutex);
+        queue.push_back(value);
+    }
+
+    bool is_not_empty() {
+        lock_guard<mutex> guard(queue_mutex);
+        return size;
+    }
+};
+
 int main() {
     check_directory("imgs");
     check_directory("out");
 
-    for (auto img_path : fs::directory_iterator("imgs")) {
-        sf::Image img;  
-
-        auto path = img_path.path();
-
-        cout << path.string() << endl;
-
-        img.loadFromFile(path.string());
-
-        auto out = fs::path("out") / path.filename();
-
-        dither_ordered(img)
-            .saveToFile(out.string());
+    vector<std::thread> workers;
     
+    sync_lifo_queue<fs::path> paths;
+
+    for (auto img_path : fs::directory_iterator("imgs")) {
+        paths.push(img_path.path());
     }
 
+    for (size_t i = 0; i < std::thread::hardware_concurrency(); i++) {
+        auto work = [&, i] {
+            while (paths.is_not_empty()) {
+               
+
+                auto path = paths.pop();
+                cout << path.string() << " from worker " << i << endl;
+
+                sf::Image img;  
+                img.loadFromFile(path.string());
+                
+                auto out = fs::path("out") / (path.filename().string() + std::string(".png"));
+
+                dither_ordered(img)
+                    .saveToFile(out.string());
+
+            }
+        }; 
+        workers.push_back(
+            std::move(std::thread { work })
+        );
+    }
+
+    for (auto &v : workers) {
+        v.join();
+    }
+
+    cout << " end !!!" << endl;
     return 0;
 
 }
