@@ -14,7 +14,6 @@ public class Traverser {
 
     public void traverse(Consumer<File> consumer) {
         Stream.of(path.listFiles())
-            .parallel()
             .forEach(consumer::accept);
     }
 
