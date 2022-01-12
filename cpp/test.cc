@@ -1,16 +1,4 @@
-#include <SFML/Graphics/Image.hpp>
-
-#include <boost/filesystem.hpp>
-#include <boost/thread.hpp>
-
-#include <iostream>
-#include <vector>
-#include <cmath>
-
-#include <optional>
-#include <thread>
-#include <queue>
-#include <mutex>
+#include "headers.hpp"
 
 
 using std::vector;
@@ -78,8 +66,6 @@ struct sync_lifo_queue {
 
     T pop() {
         lock_guard<mutex> guard(queue_mutex);
-        //auto res = queue.back();
-        //queue.resize(queue.size() - 1);
         return queue[--size];
     }
 
@@ -90,17 +76,28 @@ struct sync_lifo_queue {
     }
 
     bool is_not_empty() {
-        lock_guard<mutex> guard(queue_mutex);
         return size;
     }
 };
 
+
+void process_image_by_path(boost::filesystem::path path, std::function<sf::Image(sf::Image)> transform) {
+    sf::Image img;  
+    img.loadFromFile(path.string());
+
+    auto out = fs::path("out") / (path.filename().string() + std::string(".png"));
+
+    transform(img)
+        .saveToFile(out.string());
+}
+
 int main() {
+
+
     check_directory("imgs");
     check_directory("out");
 
     vector<std::thread> workers;
-    
     sync_lifo_queue<fs::path> paths;
 
     for (auto img_path : fs::directory_iterator("imgs")) {
@@ -110,19 +107,9 @@ int main() {
     for (size_t i = 0; i < std::thread::hardware_concurrency(); i++) {
         auto work = [&, i] {
             while (paths.is_not_empty()) {
-               
-
                 auto path = paths.pop();
                 cout << path.string() << " from worker " << i << endl;
-
-                sf::Image img;  
-                img.loadFromFile(path.string());
-                
-                auto out = fs::path("out") / (path.filename().string() + std::string(".png"));
-
-                dither_ordered(img)
-                    .saveToFile(out.string());
-
+                process_image_by_path(path, dither_ordered);
             }
         }; 
         workers.push_back(
@@ -134,7 +121,6 @@ int main() {
         v.join();
     }
 
-    cout << " end !!!" << endl;
     return 0;
 
 }
