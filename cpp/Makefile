@@ -4,10 +4,21 @@ DEBUG = -g -fsanitize=address
 
 STD = c++20
 CC = clang++   
-CONF = -O3 -fno-pie -std=$(STD) -fPIC -pthread -march=native
 
-build:
-	$(CC) test.cc -o un $(CONF) $(SFML) $(BOOST)
+CONF = -O3 -std=$(STD) 
+LINK = -fPIC -fno-pie -pthread -march=native $(BOOST) $(SFML)
+
+
+build: dither
+	 
+headers.hpp.gch: headers.hpp Makefile
+	$(CC) $< $(CONF)
+
+test.o: test.cc headers.hpp.gch
+	$(CC) $< $(CONF) -c
+
+dither: test.o headers.hpp.gch
+	$(CC) $< -o dither $(LINK)
 
 profile:
 	$(CC) -pg test.cc -o un $(DEBUG) $(CONF) $(SFML) $(BOOST)
