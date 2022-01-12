@@ -1,22 +1,31 @@
 SFML = `pkg-config --libs --cflags sfml-graphics`
 BOOST = -lboost_filesystem -lboost_thread
-DEBUG = -g -fsanitize=address 
+DEBUG = -g -fsanitize=address
 
 STD = c++20
 CC = clang++
 
-CONF = -O3 -std=$(STD) 
+CONF = -O3 -std=$(STD)
 LINK = -pthread -march=native $(BOOST) $(SFML)
 
 OUT = dither 
 
 build: $(OUT)
-	 
+
+
 headers.hpp.gch: headers.hpp Makefile
+ifeq ($(CC),g++)
 	$(CC) $< $(CONF)
+else
+	$(CC) $< $(CONF) -c
+endif	
 
 test.o: test.cc headers.hpp.gch
+ifeq ($(CC),g++)
 	$(CC) $< $(CONF) -c
+else
+	$(CC) $< -H $(CONF) -include-pch headers.hpp.gch -c
+endif
 
 $(OUT): test.o headers.hpp.gch
 	$(CC) $< -o $(OUT) $(LINK)
@@ -44,6 +53,8 @@ ifeq ($(CC),clang++)
 	$(CC) -fprofile-instr-use test.cc -o $(OUT) $(CONF) $(LINK)
 endif
 
+clean:
+	rm headers.hpp.gch *.o
 
 install: build
 	cp $(OUT) /usr/bin/
