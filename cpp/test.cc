@@ -46,11 +46,11 @@ sf::Image dither_ordered(sf::Image img) {
 using x_t = size_t;
 using y_t = size_t;
 
-long long get_error(long long chosen, long long prev) {
+int get_error(int chosen, int prev) {
     return chosen - prev;
 }
 
-long long get_closest(long long value) {
+int get_closest(int value) {
     if (value >= 127) { 
         return 255; 
     }
@@ -59,7 +59,7 @@ long long get_closest(long long value) {
     }
 }
 
-long long truncate(long long val) {
+int truncate(int val) {
     if (val < 0) {
         return 0;
     }
@@ -75,7 +75,10 @@ long long truncate(long long val) {
 const auto diffusion_d = sf::Vector2 { 5, 3 };
 
 template<class T>
-void add_checking_bounds(boost::numeric::ublas::matrix<T> &arr, const T &val, const sf::Vector2u &pos, const sf::Vector2u &bounds) {
+using matrix =  boost::numeric::ublas::matrix<T>;
+
+template<class T>
+void add_checking_bounds(matrix<T> &arr, const T &val, const sf::Vector2i &pos, const sf::Vector2u &bounds) {
     if (pos.x >= bounds.x || pos.y >= bounds.y) {
         return;
     } else {
@@ -88,18 +91,112 @@ struct rgb {
     T r, g, b;
 };
 
+
+struct _s {}; //skip
+struct _c {}; //center
+struct nr {}; //next row
+
+class diffusion_helper final {
+
+private:
+    
+    std::vector<std::pair<double, sf::Vector2i>> factor_with_shift;
+    sf::Vector2i pos = {0, 0};
+    sf::Vector2i center = {0, 0};
+
+public:
+
+    diffusion_helper() {}
+
+    diffusion_helper& next_x() {
+        pos.x++;
+        return *this;
+    }
+
+     diffusion_helper& operator<<(double x) {
+        factor_with_shift.push_back({x, pos});
+        return next_x();
+    }
+    
+    diffusion_helper& operator<<(_s x) {
+        return next_x();
+    }
+
+    diffusion_helper& operator<<(_c x) {
+        center = pos;
+        return next_x();
+    }
+
+    diffusion_helper& operator<<(nr x) {
+        pos.y++;
+        return *this;
+    }
+
+    diffusion_helper& setup_center() {
+        for (auto &[_, pos] : factor_with_shift) {
+            pos.x -= center.x;
+            pos.y -= center.y;
+        }
+        return *this;
+    } 
+
+    diffusion_helper& normalize() {
+        double sum = 0;
+        for (auto &[val, _] : factor_with_shift) {
+            sum += val;
+        }
+
+        for (auto &[val, _] : factor_with_shift) {
+            val /= sum;
+        }
+
+        return *this;
+    }
+
+    diffusion_helper& show() {
+        double s = 0; 
+        for (auto &[x, val] : factor_with_shift) {
+            s+= x;
+            cout << x << endl;
+        }  
+        cout << factor_with_shift.size() << "====" << s <<  endl;
+        return *this;
+    }
+
+    std::vector<std::pair<double, sf::Vector2i>> get_pairs() {
+        return factor_with_shift;
+    }
+
+};
+
+#define A 1
+
+auto inline diffusion_matrix = (diffusion_helper {}
+#ifdef A
+<< _s() << _s() << _c() << 7.0 << 5.0 << nr()
+         << 3.0 << 5.0 << 7.0 << 5.0 << 3.0 << nr()
+         << 1.0 << 3.0 << 5.0 << 3.0 << 1.0 << nr())
+#else
+ << _c() << 0.6 << nr() 
+ << 0.5 << 1 << nr()) 
+#endif
+    
+    .normalize()
+    .setup_center()
+    .show()
+    .get_pairs();
+
 sf::Image dither_diffusion(sf::Image& img) {
     sf::Image res;
     const auto size = img.getSize();
     res.create(size.x, size.y, sf::Color {0, 0, 0, 255});
 
-    using namespace boost::numeric::ublas;
    
 
     auto err = rgb {
-        matrix<long long> {size.x, size.y},
-        matrix<long long> {size.x, size.y},
-        matrix<long long> {size.x, size.y}
+        matrix<int> {size.x, size.y},
+        matrix<int> {size.x, size.y},
+        matrix<int> {size.x, size.y}
     };
 
 
@@ -111,8 +208,8 @@ sf::Image dither_diffusion(sf::Image& img) {
 
         }   
     }
-    for (uint32_t i = 0; i < size.x; i++) {
-        for (uint32_t j = 0; j < size.y; j++) {
+    for (int i = 0; i < size.x; i++) {
+        for (int j = 0; j < size.y; j++) {
 
 
             auto pixel = img.getPixel(i, j);
@@ -142,37 +239,15 @@ sf::Image dither_diffusion(sf::Image& img) {
             auto error_r = get_error(closest_r, color_r);
             auto error_g = get_error(closest_g, color_g);
             auto error_b = get_error(closest_b, color_b);
-            if (false) { 
-                add_checking_bounds(err.r, (long long)(error_r * 0.5), {i + 1, j    }, size);
-                add_checking_bounds(err.r, (long long)(error_r * 1),   {i + 1, j + 1}, size);
-                add_checking_bounds(err.r, (long long)(error_r * 0.5), {i    , j + 1}, size);
 
+            for (auto& [val, shift] : diffusion_matrix) {
+                sf::Vector2i adjusted = {shift.x + i, shift.y + j};
+                add_checking_bounds(err.r, (int)(error_r * val), adjusted, size);
+                add_checking_bounds(err.g, (int)(error_g * val), adjusted, size);
+                add_checking_bounds(err.b, (int)(error_b * val), adjusted, size);
 
-
-                add_checking_bounds(err.g, (long long)(error_g * 0.5), {i + 1, j}, size);
-                add_checking_bounds(err.g, (long long)(error_g * 1), {i + 1, j + 1}, size);
-                add_checking_bounds(err.g, (long long)(error_g * 0.5), {i, j + 1}, size);
-
-                add_checking_bounds(err.b, (long long)(error_b * 0.5), {i + 1, j}, size);
-                add_checking_bounds(err.b, (long long)(error_b * 1), {i + 1, j + 1}, size);
-                add_checking_bounds(err.b, (long long)(error_b * 0.5), {i, j + 1}, size);
             }
-
-            add_checking_bounds(err.r, (long long)(error_r * 7/16.0), {i + 1, j    }, size);
-            add_checking_bounds(err.r, (long long)(error_r * 1/16.0),   {i + 1, j + 1}, size);
-            add_checking_bounds(err.r, (long long)(error_r * 5/16.0), {i    , j + 1}, size);
-            add_checking_bounds(err.r, (long long)(error_r * 3/16.0), {i - 1, j + 1}, size);
-             
-
-            add_checking_bounds(err.g, (long long)(error_g * 7/16.0), {i + 1, j    }, size);
-            add_checking_bounds(err.g, (long long)(error_g * 1/16.0),   {i + 1, j + 1}, size);
-            add_checking_bounds(err.g, (long long)(error_g * 5/16.0), {i    , j + 1}, size);
-            add_checking_bounds(err.g, (long long)(error_g * 3/16.0), {i - 1, j + 1}, size);
-             
-            add_checking_bounds(err.b, (long long)(error_b * 7/16.0), {i + 1, j    }, size);
-            add_checking_bounds(err.b, (long long)(error_b * 1/16.0),   {i + 1, j + 1}, size);
-            add_checking_bounds(err.b, (long long)(error_b * 5/16.0), {i    , j + 1}, size);
-            add_checking_bounds(err.b, (long long)(error_b * 3/16.0), {i - 1, j + 1}, size);
+        
              
         }
 
@@ -182,6 +257,8 @@ sf::Image dither_diffusion(sf::Image& img) {
 //
     return res;
 }
+
+
 
 bool check_directory(std::string dir) {
     if (not fs::exists(dir)) {
