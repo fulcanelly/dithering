@@ -1,7 +1,12 @@
 # Dithering
 
 
+# Learn more
 
+- [Ditherpunk — The article I wish I had about monochrome image dithering ](https://surma.dev/things/ditherpunk/)
+- [Image Dithering: Eleven Algorithms and Source Code](https://tannerhelland.com/2012/12/28/dithering-eleven-algorithms-source-code.html)
+- [Floyd–Steinberg dithering](https://en.wikipedia.org/wiki/Floyd%E2%80%93Steinberg_dithering)
+- [Joel Yliluoma's arbitrary-palette positional dithering algorithm](https://bisqwit.iki.fi/story/howto/dither/jy/)
 ### Examples
 
 
