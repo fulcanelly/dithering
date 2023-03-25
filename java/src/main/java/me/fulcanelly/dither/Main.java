@@ -8,6 +8,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.function.Consumer;
 import java.util.stream.Stream;
 
 import javax.imageio.ImageIO;
@@ -19,7 +20,6 @@ import me.fulcanelly.dither.utils.Traverser;
 
 import java.awt.Color;
 import java.awt.image.BufferedImage;
-
 
 class Layer {
     Color avgColor;
@@ -52,6 +52,55 @@ class AnyLayer extends Layer {
     List<DownLayer> indexes;
 }
 
+interface PyramidNodeX {
+
+    Color getAvgColor();
+
+    Stream<Position> getPositionsStream();
+}
+
+class TopPyramidNode implements PyramidNodeX {
+
+    List<Position> indexes;
+    Color avgColor;
+
+    public TopPyramidNode(Color avgColor, List<Position> indexes) {
+        this.avgColor = avgColor;
+        this.indexes = indexes;
+    }
+
+    @Override
+    public Stream<Position> getPositionsStream() {
+        return indexes.stream();
+    }
+
+    @Override
+    public Color getAvgColor() {
+        return avgColor;
+    }
+
+}
+
+class BigPyramidNode implements PyramidNodeX {
+    Color avgColor;
+    List<Position> indexes;
+
+    public BigPyramidNode(Color avgColor, List<Position> indexes) {
+        this.avgColor = avgColor;
+        this.indexes = indexes;
+    }
+
+    @Override
+    public Stream<Position> getPositionsStream() {
+        return indexes.stream();
+    }
+
+    @Override
+    public Color getAvgColor() {
+        return avgColor;
+    }
+}
+
 class PyramidNode {
     Color avgColor;
     List<Position> indexes;
@@ -63,7 +112,7 @@ class PyramidNode {
 }
 
 class PyramidLayer {
-    final PyramidNode[][] nodes;
+    final PyramidNodeX[][] nodes;
 
     final int width, height;
 
@@ -78,10 +127,10 @@ class PyramidLayer {
     public PyramidLayer(int width, int height) {
         this.height = height;
         this.width = width;
-        this.nodes = new PyramidNode[width][height];
+        this.nodes = new PyramidNodeX[width][height];
     }
 
-    PyramidNode[][] nodes() {
+    PyramidNodeX[][] nodes() {
         return nodes;
     }
 
@@ -191,7 +240,7 @@ class PyramidSegmenter {
     // so node that returned should contain the most popular common (avg) color in
     // that range of pixels
     // and indexes of that pixels that close to that color and betwwen each other
-    PyramidNode constructNodeOfImage(BufferedImage image, int x, int y) {
+    PyramidNodeX constructNodeOfImage(BufferedImage image, int x, int y) {
         int width = image.getWidth();
         int height = image.getHeight();
 
@@ -219,68 +268,78 @@ class PyramidSegmenter {
                         .map(pos -> new Color(image.getRGB(pos.x, pos.y)))
                         .toList());
 
-        return new PyramidNode(avgColor, indexes);
+        return new TopPyramidNode(avgColor, indexes);
     }
 
     Stream<Position> getNeighbors(int x, int y) {
         return null;
     }
 
-    PyramidNode constructNodeOfLayer(PyramidLayer prevLayer, int x, int y) {
+    // TODO, bounds, pos
+    Stream<Position> nearbyPositionsStream() {
+        return null;
+    }
+
+    PyramidNodeX constructNodeOfLayer(PyramidLayer prevLayer, int x, int y) {
         final int width = prevLayer.getWidth();
         final int height = prevLayer.getHeight();
 
-        List<Position> indexes = new ArrayList<>();
+        List<PyramidNodeX> childNodes = new ArrayList<>();
 
         Color baseColor = calculateAvgColor(getNeighborColors(prevLayer, x, y));
 
         for (int i = x; i <= x + 1 && i < width; i++) {
             for (int j = y; j <= y + 1 && j < height; j++) {
-                Color color = prevLayer.nodes()[i][j].avgColor;
-
-                if (isColorsClose(baseColor, color)) {
-                    indexes.add(new Position(i, j));
+                var node = prevLayer.nodes()[i][j];
+                if (isColorsClose(baseColor, node.getAvgColor())) {
+                    childNodes.add(node);
                 }
-
-                var nodes = prevLayer.nodes()[i][j];
             }
         }
 
         // TODO, i don't think it's good implementation
-        if (indexes.isEmpty()) {
-            indexes.add(getPositionOfClosestTo(prevLayer, baseColor, x, y));
+        if (childNodes.isEmpty()) {
+            childNodes.add(getClosestByColorNearNode(prevLayer, baseColor, x, y));
         }
 
+        // Color avgColor = calculateAvgColor(
+        // indexes.stream()
+        // .map(pos -> prevLayer.nodes[pos.x][pos.y].avgColor)
+        // .toList());
 
-        Color avgColor = calculateAvgColor(
-                indexes.stream()
-                        .map(pos -> prevLayer.nodes[pos.x][pos.y].avgColor)
-                        .toList());
+        var avgColor = calculateAvgColor(childNodes.stream()
+                .map(PyramidNodeX::getAvgColor).toList());
 
-        return new PyramidNode(avgColor, indexes);
+        var positions = childNodes.stream()
+                .flatMap(i -> i.getPositionsStream())
+                .toList();
+
+        return new BigPyramidNode(avgColor, positions);// new
+                                                       // PyramidNode(avgColor,
+                                                       // indexes);
 
     }
 
-    Position getPositionOfClosestTo(PyramidLayer layer, Color target, int x, int y) {
-        Position closestPosition = null;
+    PyramidNodeX getClosestByColorNearNode(PyramidLayer layer, Color target, int x, int y) {
+        PyramidNodeX closestNode = null;
 
         double minDistance = Double.POSITIVE_INFINITY;
 
         for (int i = x; i <= x + 1 && i < layer.getWidth(); i++) {
             for (int j = y; j <= y + 1 && j < layer.getHeight(); j++) {
-                Color pixelColor = layer.nodes()[i][j].avgColor;
-                double distance = colorDistance(pixelColor, target);
+                var node = layer.nodes()[i][j];
+                var pixelColor = node.getAvgColor();
+                var distance = colorDistance(pixelColor, target);
 
                 if (distance < minDistance) {
                     minDistance = distance;
-                    closestPosition = new Position(i, j);
+                    closestNode = node;
                 }
             }
         }
 
-        return closestPosition;
+        return closestNode;
     }
-
 
     public static List<Color> getNeighborColors(PyramidLayer image, int x, int y) {
         List<Color> neighborColors = new ArrayList<>();
@@ -289,13 +348,12 @@ class PyramidSegmenter {
 
         for (int i = x; i <= x + 1 && i < width; i++) {
             for (int j = y; j <= y + 1 && j < height; j++) {
-                neighborColors.add(image.nodes()[i][j].avgColor);
+                neighborColors.add(image.nodes()[i][j].getAvgColor());
             }
         }
 
         return neighborColors;
     }
-
 
     public static List<Color> getNeighborColors(BufferedImage image, int x, int y) {
         List<Color> neighborColors = new ArrayList<>();
@@ -323,7 +381,6 @@ class PyramidSegmenter {
                 blueSum / totalColors);
     }
 
-
     BufferedImage applyPyramid(BufferedImage img, PyramidLayer layer) {
         var rand = ThreadLocalRandom.current();
 
@@ -333,7 +390,7 @@ class PyramidSegmenter {
                 // var color = node.avgColor;
                 var color = new Color(rand.nextInt(250), rand.nextInt(250), rand.nextInt(250)); // .getRGB()
 
-                for (var pos : node.indexes) {
+                for (var pos : node.getPositionsStream().toList()) {
                     img.setRGB(pos.x, pos.y, color.getRGB());
 
                     // image.setRGB(pos.x, pos.y, );
@@ -341,6 +398,31 @@ class PyramidSegmenter {
             }
         }
         return img;
+    }
+
+
+    Color getRandColor() {
+        var rand = ThreadLocalRandom.current();
+
+        var color = new Color(rand.nextInt(250), rand.nextInt(250), rand.nextInt(250));
+        return color;
+    }
+
+
+    void applyForEachPixelOfNode(BufferedImage img, PyramidNodeX node, Consumer<Position> apply) {
+        node.getPositionsStream().forEach(apply);
+    }
+
+
+    void colorifyEachNode(BufferedImage img, PyramidLayer layer) {
+        for (var nodes : layer.nodes()) {
+            for (var node : nodes) {
+                var color = getRandColor();
+                System.out.println(node.getPositionsStream().count());
+                node.getPositionsStream().forEach((pos) -> img.setRGB(pos.x, pos.y, color.getRGB()));
+
+            }
+        }
     }
 
     BufferedImage handle(BufferedImage image) {
@@ -371,9 +453,15 @@ class PyramidSegmenter {
 
         }
 
+        // count child node coutn
+
+        // System.out.println(currentLayer.nodes()[0][0].getPositionsStream().count());
+
         // highlight
 
         System.out.println(firstLayer);
+
+        colorifyEachNode(image, currentLayer);
         return image;
     }
 }
@@ -455,7 +543,7 @@ public class Main {
             } catch (Exception e) {
                 e.printStackTrace();
 
-                throw new Error(e);
+                //throw new Error(e);
                 // e.printStackTrace();
                 // System.err.println(e.getMessage());
 
