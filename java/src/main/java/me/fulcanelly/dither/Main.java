@@ -7,7 +7,13 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 
@@ -149,20 +155,52 @@ class FinalPyrmid {
 // (should convert image to layer at start)
 class PyramidSegmenter {
 
+    public static double hsvColorDistance2(Color a, Color b) {
+        var hsv1 = Color.RGBtoHSB(a.getRed(), a.getGreen(), a.getBlue(), null);
+        var hsv2 = Color.RGBtoHSB(b.getRed(), b.getGreen(), b.getBlue(), null);
+
+        double hue1 = hsv1[0], sat1 = hsv1[1], val1 = hsv1[2];
+        double hue2 = hsv2[0], sat2 = hsv2[1], val2 = hsv2[2];
+
+        // Calculate hue distance using the shortest distance around the color wheel
+        double hueDistance = Math.min(Math.abs(hue1 - hue2), 1 - Math.abs(hue1 - hue2));
+
+        // Calculate saturation and value distances
+        double satDistance = sat1 - sat2;
+        double valDistance = val1 - val2;
+
+        // Calculate color distance using a weighted combination of the three distances
+        double colorDistance = Math.sqrt(0.5 * hueDistance * hueDistance +
+                0.4 * satDistance * satDistance +
+                0.1 * valDistance * valDistance);
+
+        return colorDistance;
+    }
+
     double colorDistance(Color color1, Color color2) {
-        return Math.sqrt(Math.pow(color1.getRed() - color2.getRed(), 2) +
-                Math.pow(color1.getGreen() - color2.getGreen(), 2) +
-                Math.pow(color1.getBlue() - color2.getBlue(), 2));
+        return hsvColorDistance2(color1, color2);
     }
 
-    boolean isColorsClose(Color color1, Color color2) {
-        double distance = Math.sqrt(Math.pow(color1.getRed() - color2.getRed(), 2) +
-                Math.pow(color1.getGreen() - color2.getGreen(), 2) +
-                Math.pow(color1.getBlue() - color2.getBlue(), 2));
-
-        double threshold = 0.1 * Math.sqrt(255 * 255 * 3);
-        return distance <= threshold;
+    boolean isColorsClose(Color a, Color b) {
+        // var dist = hsvColorDistance2(color1, color2);;
+        return hsvColorDistance2(a, b) <= 0.1;
     }
+
+    // double colorDistance(Color color1, Color color2) {
+
+    // return Math.sqrt(Math.pow(color1.getRed() - color2.getRed(), 2) +
+    // Math.pow(color1.getGreen() - color2.getGreen(), 2) +
+    // Math.pow(color1.getBlue() - color2.getBlue(), 2));
+    // }
+
+    // boolean isColorsClose(Color color1, Color color2) {
+    // double distance = Math.sqrt(Math.pow(color1.getRed() - color2.getRed(), 2) +
+    // Math.pow(color1.getGreen() - color2.getGreen(), 2) +
+    // Math.pow(color1.getBlue() - color2.getBlue(), 2));
+
+    // double threshold = 0.1 * Math.sqrt(255 * 255 * 3);
+    // return distance <= threshold;
+    // }
 
     /*
      *
@@ -311,7 +349,7 @@ class PyramidSegmenter {
                     .sorted((a, b) -> Double.compare(
                             colorDistance(a.getAvgColor(), baseColor),
                             colorDistance(a.getAvgColor(), baseColor)))
-                    .limit(1).toList();
+                    .findFirst().stream().toList();
 
             // childNodes.add(getClosestByColorNearNode(prevLayer, baseColor, x, y));
         }
@@ -428,7 +466,7 @@ class PyramidSegmenter {
     void colorifyEachNode(BufferedImage img, PyramidLayer layer) {
         for (var nodes : layer.nodes()) {
             for (var node : nodes) {
-                var color = getRandColor();
+                var color = node.getAvgColor();
                 System.out.println(node.getPositionsStream().count());
                 node.getPositionsStream().forEach((pos) -> img.setRGB(pos.x, pos.y, color.getRGB()));
 
@@ -448,7 +486,7 @@ class PyramidSegmenter {
 
         var currentLayer = firstLayer;
 
-        while (Math.min(currentLayer.height, currentLayer.width) >= 3) {
+        while (Math.min(currentLayer.height, currentLayer.width) > 1) {
             var newLayer = new PyramidLayer(currentLayer.width / 2, currentLayer.height / 2);
             System.out.println(currentLayer);
 
@@ -487,6 +525,16 @@ class HSL {
 }
 
 class HueRgbConverter {
+
+    double colorDistance(Color a, Color b) {
+        var ahsv = Color.RGBtoHSB(a.getRed(), a.getGreen(), a.getBlue(), null);
+        var bhsv = Color.RGBtoHSB(b.getRed(), b.getGreen(), b.getBlue(), null);
+        // return Math.sqrt(hueDistance * hueDistance * 0.8f + saturationDistance *
+        // saturationDistance * 0.1f + lightnessDistance * lightnessDistance * 0.1f);
+        return 0;
+
+    }
+
     public static double hue2rgb(double p, double q, double t) {
         if (t < 0) {
             t += 1;
@@ -509,10 +557,6 @@ class HueRgbConverter {
     public static Color hue2color(double p, double q, double t) {
         return new Color((int) hue2rgb(p, q, t));
     }
-
-}
-
-public class Main {
 
     HSL rgb2hsl(float r, float g, float b) {
         HSL result = new HSL();
@@ -541,30 +585,79 @@ public class Main {
         return result;
     }
 
+
+}
+
+class ThreadPOolTest {
+    ExecutorService executor = Executors.newFixedThreadPool(2);
+
+
+    void longRunTask(int id) {
+        while (true) {
+            System.out.println("hi from " + id);
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                // TODO Auto-generated catch block
+                e.printStackTrace();
+            }
+        }
+    }
+
+
+    void test() {
+        for (int i = 0; i < 10; i++) {
+            final var x = i;
+            executor.submit(() -> longRunTask(x));
+        }
+    }
+}
+
+
+public class Main {
+
     public static void main(String[] args) throws IOException {
+
+        var executor = Executors.newFixedThreadPool(3);
+
         var segmeter = new PyramidSegmenter();
 
         var traverser = new Traverser(new File(args[0]));
+        var list = new ArrayList<Future<?>>();
+
         traverser.traverse(path -> {
             if (path.toString().endsWith(".2.png")) {
                 return;
             }
 
-            try {
-                System.out.println(path);
-                var handled = segmeter.handle(ImageIO.read(path));
-                ImageIO.write(handled, "png", new File(path.toString() + ".2.png"));
+            var it = executor.submit(() -> {
+                try {
+                    System.out.println(path);
+                    var handled = segmeter.handle(ImageIO.read(path));
+                    ImageIO.write(handled, "png", new File(path.toString() + ".2.png"));
+                } catch (Exception e) {
+                    e.printStackTrace();
 
-            } catch (Exception e) {
-                e.printStackTrace();
+                    // throw new Error(e);
+                    // e.printStackTrace();
+                    // System.err.println(e.getMessage());
 
-                // throw new Error(e);
-                // e.printStackTrace();
-                // System.err.println(e.getMessage());
+                    // throw new RuntimeException(e);
+                }
+            });
+            list.add(it);
 
-                // throw new RuntimeException(e);
-            }
         });
+
+        for (var x : list) {
+            try {
+                x.get();
+            } catch (InterruptedException | ExecutionException e) {
+                e.printStackTrace();
+            }
+
+        }
+        executor.shutdown();
         // ImageHandler ih = null;
         // if (args.length > 0) {
         // ih = new BayerDitheringFacade();
