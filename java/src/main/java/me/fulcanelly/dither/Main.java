@@ -170,9 +170,9 @@ class PyramidSegmenter {
         double valDistance = val1 - val2;
 
         // Calculate color distance using a weighted combination of the three distances
-        double colorDistance = Math.sqrt(0.5 * hueDistance * hueDistance +
-                0.4 * satDistance * satDistance +
-                0.1 * valDistance * valDistance);
+        double colorDistance = Math.sqrt(0.2 * hueDistance * hueDistance +
+                0.7 * satDistance * satDistance +
+                0.1 *  valDistance * valDistance);
 
         return colorDistance;
     }
@@ -183,14 +183,14 @@ class PyramidSegmenter {
 
     boolean isColorsClose(Color a, Color b) {
         // var dist = hsvColorDistance2(color1, color2);;
-        return hsvColorDistance2(a, b) <= 0.1;
+        return hsvColorDistance2(a, b) <= 0.05;
     }
 
     // double colorDistance(Color color1, Color color2) {
 
-    // return Math.sqrt(Math.pow(color1.getRed() - color2.getRed(), 2) +
-    // Math.pow(color1.getGreen() - color2.getGreen(), 2) +
-    // Math.pow(color1.getBlue() - color2.getBlue(), 2));
+    //     return Math.sqrt(Math.pow(color1.getRed() - color2.getRed(), 2) +
+    //     Math.pow(color1.getGreen() - color2.getGreen(), 2) +
+    //     Math.pow(color1.getBlue() - color2.getBlue(), 2));
     // }
 
     // boolean isColorsClose(Color color1, Color color2) {
@@ -313,7 +313,6 @@ class PyramidSegmenter {
         return null;
     }
 
-    // TODO, bounds, pos
     List<Position> nearbyPositionsStream(final Position bound, final Position position) {
         var list = new ArrayList<Position>();
 
@@ -467,6 +466,7 @@ class PyramidSegmenter {
         for (var nodes : layer.nodes()) {
             for (var node : nodes) {
                 var color = node.getAvgColor();
+              // var color = Color.black;
                 System.out.println(node.getPositionsStream().count());
                 node.getPositionsStream().forEach((pos) -> img.setRGB(pos.x, pos.y, color.getRGB()));
 
@@ -486,7 +486,7 @@ class PyramidSegmenter {
 
         var currentLayer = firstLayer;
 
-        while (Math.min(currentLayer.height, currentLayer.width) > 1) {
+        while (Math.min(currentLayer.height, currentLayer.width) > 5) {
             var newLayer = new PyramidLayer(currentLayer.width / 2, currentLayer.height / 2);
             System.out.println(currentLayer);
 
@@ -675,3 +675,10 @@ public class Main {
 interface RangeLimiter {
     // int getLimitBy
 }
+
+// todo:
+// * fix full segment
+// * play with percent
+// * fix neighbours
+// * use streams +
+// * what to do with orpjaned nodes?

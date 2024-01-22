@@ -11,8 +11,8 @@ import me.fulcanelly.dither.utils.Traverser;
 
 public class AllImagesProcessor {
 
-    
-    Traverser traverser; 
+
+    Traverser traverser;
     ImageHandler algorithm;
 
     AllImagesProcessor(File file, ImageHandler algorithm) {
@@ -30,7 +30,7 @@ public class AllImagesProcessor {
         store(iproc.process(), new File(out, path.getName()));
     }
 
-    
+
     public BufferedImage load(File file) {
         try {
             return ImageIO.read(file);
